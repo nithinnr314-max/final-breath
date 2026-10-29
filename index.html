@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breathe IQ - Smart Air Quality & Gas Monitoring System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { brand: {
+                50: '#ecfeff', 100: '#cffaff', 400: '#22d3ee',
+                500: '#06b6d4', 600: '#0891b2', 900: '#164e63'
+            }}}}
+        };
+    </script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body class="h-screen overflow-hidden flex flex-col antialiased">
+
+    <!-- TOAST NOTIFICATION STACK -->
+    <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm w-full"></div>
+
+    <!-- HEADER BAR -->
+    <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur px-4 flex items-center justify-between z-30 flex-shrink-0 transition-colors">
+        <div class="flex items-center space-x-3">
+            <button id="mobile-menu-btn" class="lg:hidden text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white focus:outline-none">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+            <div class="flex items-center space-x-2.5">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                    <i class="fa-solid fa-lungs text-white text-lg animate-pulse"></i>
+                </div>
+                <div>
+                    <span class="text-lg font-extrabold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-cyan-500 to-blue-600 dark:from-cyan-400 dark:to-blue-400">Breathe IQ</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-400 border border-cyan-300 dark:border-cyan-800 ml-2 hidden sm:inline-block">SENTINEL v4.0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Actions, Language Selector, Theme Switcher & User Profile -->
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            
+            <!-- REALTIME PAUSE / PLAY TOGGLE -->
+            <button onclick="toggleStreamPause()" id="pause-stream-btn" title="Pause Realtime Updates" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center space-x-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                <i class="fa-solid fa-pause text-cyan-500" id="pause-icon"></i>
+                <span class="hidden md:inline" data-i18n="live_stream">Live Stream</span>
+            </button>
+
+            <!-- HAZARD INJECTION SIMULATOR BUTTON -->
+            <div class="relative">
+                <button id="sim-trigger-btn" class="px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-600 dark:text-indigo-300 text-xs font-semibold flex items-center space-x-1.5 transition">
+                    <i class="fa-solid fa-flask text-indigo-500"></i>
+                    <span class="hidden sm:inline" data-i18n="sim_scenario">Simulate Hazard</span>
+                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </button>
+                <div id="sim-menu" class="hidden absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-2 z-50 text-xs">
+                    <div class="px-3 py-1.5 text-[10px] text-slate-400 font-bold border-b border-slate-100 dark:border-slate-700 uppercase" data-i18n="inject_test">Inject Test Scenario</div>
+                    <button class="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center space-x-2" onclick="setSimScenario('normal')">
+                        <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                        <span data-i18n="scen_normal">Normal Baseline</span>
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center space-x-2" onclick="setSimScenario('co_spike')">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+                        <span data-i18n="scen_co">CO Carbon Monoxide Leak</span>
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center space-x-2" onclick="setSimScenario('gas_leak')">
+                        <i class="fa-solid fa-fire text-rose-500"></i>
+                        <span data-i18n="scen_lpg">LPG / Propane Leak</span>
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center space-x-2" onclick="setSimScenario('ammonia')">
+                        <i class="fa-solid fa-biohazard text-purple-500"></i>
+                        <span data-i18n="scen_nh3">Ammonia NH3 Spike</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- LANGUAGE SELECTOR -->
+            <div class="relative">
+                <select id="lang-select" onchange="changeLanguage(this.value)" class="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 font-semibold cursor-pointer">
+                    <option value="en">English</option>
+                    <option value="hi">हिंदी (Hindi)</option>
+                    <option value="kn">ಕನ್ನಡ (Kannada)</option>
+                </select>
+            </div>
+
+            <!-- THEME TOGGLE (DARK / LIGHT MODE) -->
+            <button onclick="toggleTheme()" id="theme-btn" title="Toggle Light/Dark Theme" class="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                <i class="fa-solid fa-moon dark:hidden"></i>
+                <i class="fa-solid fa-sun hidden dark:block"></i>
+            </button>
+
+            <!-- BROWSER NOTIFICATION TOGGLE -->
+            <button onclick="toggleNotificationPermission()" id="notif-perm-btn" title="Toggle Notifications" class="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-cyan-500 transition">
+                <i class="fa-regular fa-bell" id="notif-icon"></i>
+            </button>
+
+            <!-- USER PROFILE HEADER -->
+            <div id="user-header-profile" class="flex items-center space-x-2.5 pl-2 border-l border-slate-200 dark:border-slate-800">
+                <!-- JS populated -->
+            </div>
+        </div>
+    </header>
+
+    <!-- BODY CONTAINER -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="absolute lg:relative z-20 w-64 h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-transform duration-300 -translate-x-full lg:translate-x-0">
+            <div class="p-4 space-y-6 overflow-y-auto">
+
+                <div>
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3" data-i18n="core_modules">Core Modules</div>
+                    <nav class="space-y-1">
+                        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                            <i class="fa-solid fa-gauge-high w-5 text-center"></i>
+                            <span data-i18n="nav_sensors">Sensors Dashboard</span>
+                        </button>
+                        <button onclick="switchTab('map')" id="nav-map" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-map-location-dot w-5 text-center"></i>
+                            <span data-i18n="nav_map">GPS & Spatial Map</span>
+                        </button>
+                        <button onclick="switchTab('analytics')" id="nav-analytics" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                            <span data-i18n="nav_analytics">Analytics & Logs</span>
+                        </button>
+                        <button onclick="switchTab('thresholds')" id="nav-thresholds" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-bell w-5 text-center"></i>
+                            <span data-i18n="nav_alerts">Alert Settings</span>
+                        </button>
+                        <button onclick="switchTab('manual-input')" id="nav-manual-input" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-sliders w-5 text-center"></i>
+                            <span data-i18n="nav_manual">Manual Testing</span>
+                        </button>
+                        <button onclick="switchTab('profile')" id="nav-profile" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-user-gear w-5 text-center"></i>
+                            <span data-i18n="nav_profile">Profile Settings</span>
+                        </button>
+                        <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i class="fa-solid fa-gear w-5 text-center"></i>
+                            <span data-i18n="nav_settings">System Preferences</span>
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- HARDWARE STATUS BOX -->
+                <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                    <div class="font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                        <span data-i18n="hardware_status">Hardware Node</span>
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    </div>
+                    <div class="text-slate-500 flex justify-between">
+                        <span>MCU:</span>
+                        <span class="text-slate-700 dark:text-slate-200 font-mono">ESP32-S3 Dual-Core</span>
+                    </div>
+                    <div class="text-slate-500 flex justify-between">
+                        <span data-i18n="data_rate">Data Refresh:</span>
+                        <span id="ui-refresh-rate" class="text-cyan-600 dark:text-cyan-400 font-mono">5s</span>
+                    </div>
+                    <div class="text-slate-500 flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-800">
+                        <span>Storage Sync:</span>
+                        <span class="text-emerald-500 font-semibold text-[10px] flex items-center">
+                            <i class="fa-solid fa-database mr-1"></i> localStorage
+                        </span>
+                    </div>
+                </div>
+
+                <!-- CSV EXPORT BUTTON -->
+                <button onclick="exportCSV()" class="w-full py-2.5 px-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 font-semibold text-xs flex items-center justify-center space-x-2 transition">
+
+                    <i class="fa-solid fa-file-csv text-base"></i>
+                    <span data-i18n="export_csv">Export CSV Data</span>
+                </button>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+                <span>Breathe IQ v4.0</span>
+                <span class="text-emerald-500 font-medium"><i class="fa-solid fa-wifi text-[10px] mr-1"></i><span data-i18n="online">Online</span></span>
+            </div>
+        </aside>
+
+        <!-- MAIN DISPLAY MAIN -->
+        <main class="flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-950 p-4 md:p-6 space-y-6">
+
+            <!-- TAB 1: SENSORS DASHBOARD OVERVIEW -->
+            <div id="tab-dashboard" class="tab-content space-y-6">
+
+                <!-- HAZARD METRIC & SUMMARY CARDS -->
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                    
+                    <!-- Air Safety Index Card -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400" data-i18n="safety_index_label">Air Safety Hazard Score</span>
+                                <div class="text-3xl font-black text-slate-900 dark:text-white mt-1 flex items-baseline space-x-2">
+                                    <span id="overall-index-val">15</span>
+                                    <span class="text-xs font-normal text-slate-400">/ 100</span>
+                                </div>
+                            </div>
+                            <span id="overall-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                SAFE / CLEAN
+                            </span>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div id="overall-index-bar" class="bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 h-2 rounded-full transition-all duration-500" style="width: 15%"></div>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-2 flex justify-between">
+                                <span data-i18n="calc_weighted">Weighted Gas Hazard Calculation</span>
+                                <span id="last-update-time" class="text-cyan-600 dark:text-cyan-400 font-mono">Just now</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Ambient SHT31 Temp -->
+                    <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-500 text-xl flex-shrink-0">
+                            <i class="fa-solid fa-temperature-half"></i>
+                        </div>
+                        <div class="flex-1">
+                            <span class="text-xs text-slate-400 font-medium" data-i18n="sht31_temp">SHT31 Temperature</span>
+                            <div class="text-2xl font-bold text-slate-900 dark:text-white mt-0.5" id="sht31-temp">25.0 °C</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">
+                                <span data-i18n="comfort">Comfort Level:</span> <span class="text-emerald-500 font-semibold" id="temp-comfort" data-i18n="optimal">Optimal</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ambient SHT31 Humidity -->
+                    <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-500 text-xl flex-shrink-0">
+                            <i class="fa-solid fa-droplet"></i>
+                        </div>
+                        <div class="flex-1">
+                            <span class="text-xs text-slate-400 font-medium" data-i18n="sht31_hum">SHT31 Relative Humidity</span>
+                            <div class="text-2xl font-bold text-slate-900 dark:text-white mt-0.5" id="sht31-humidity">50.0 %</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">
+                                <span data-i18n="dew_point">Dew Point:</span> <span class="text-slate-700 dark:text-slate-300 font-mono" id="sht31-dewpoint">13.2 °C</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sensor Array Health -->
+                    <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-500 text-xl flex-shrink-0">
+                            <i class="fa-solid fa-microchip"></i>
+                        </div>
+                        <div class="flex-1">
+                            <span class="text-xs text-slate-400 font-medium" data-i18n="active_sensors">Active Gas Array</span>
+                            <div class="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">7 Channels</div>
+                            <div class="text-[11px] text-emerald-500 flex items-center space-x-1 mt-0.5">
+                                <i class="fa-solid fa-circle-check"></i>
+                                <span data-i18n="all_calibrated">All Calibrated & Live</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DYNAMIC GAS CARDS (7 SENSORS) -->
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <i class="fa-solid fa-flask-vial text-cyan-500"></i>
+                            <span data-i18n="gas_metrics_title">Gas & Environmental Sensors</span>
+                        </h2>
+                        <span class="text-xs text-slate-400" data-i18n="ppm_notice">Concentrations measured in PPM</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="sensor-cards-container">
+                        <!-- Dynamic Gas Cards JS generated -->
+                    </div>
+                </div>
+
+                <!-- QUICK TREND CHART -->
+                <div class="glass-panel p-5 rounded-2xl">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-2">
+                        <div>
+                            <h3 class="font-bold text-slate-900 dark:text-white text-base" data-i18n="live_stream_title">Live Telemetry Stream</h3>
+                            <p class="text-xs text-slate-400" data-i18n="live_stream_desc">Real-time dynamic trend visualization</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-slate-400" data-i18n="select_sensor">Channel:</span>
+                            <select id="quick-chart-sensor" onchange="updateDashboardQuickChart()" class="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="mq135">MQ135 (Air Quality / NH3)</option>
+                                <option value="mq7">MQ7 (Carbon Monoxide CO)</option>
+                                <option value="mq2">MQ2 (LPG & Smoke)</option>
+                                <option value="mq4">MQ4 (Methane CH4)</option>
+                                <option value="mq6">MQ6 (Propane Gas)</option>
+                                <option value="mq8">MQ8 (Hydrogen H2)</option>
+                                <option value="temp">SHT31 (Temperature)</option>
+                                <option value="humidity">SHT31 (Humidity)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="h-64 w-full">
+                        <canvas id="dashboardQuickChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: GPS MAP -->
+            <div id="tab-map" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-5 rounded-2xl space-y-4">
+                    <div class="flex flex-col md:flex-row justify-between md:items-center gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-map-pin text-cyan-500"></i>
+                                <span data-i18n="map_title">Geospatial Sensor Node Tracking</span>
+                            </h2>
+                            <p class="text-xs text-slate-400" data-i18n="map_desc">Real-time GPS mapping and nearby sensor node telemetry</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="getUserLocation()" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-xs font-semibold flex items-center space-x-1.5 transition">
+                                <i class="fa-solid fa-crosshairs"></i>
+                                <span data-i18n="locate_me">Get Device GPS</span>
+                            </button>
+                            <button onclick="addVirtualStation()" class="px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center space-x-1.5 transition">
+                                <i class="fa-solid fa-plus"></i>
+                                <span data-i18n="add_node">Add Node Marker</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-100 dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                        <div>
+                            <span class="text-slate-400 block" data-i18n="lat">Latitude</span>
+                            <span id="geo-lat" class="text-slate-800 dark:text-slate-200 font-mono font-semibold">12.9716 N</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block" data-i18n="lng">Longitude</span>
+                            <span id="geo-lng" class="text-slate-800 dark:text-slate-200 font-mono font-semibold">77.5946 E</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block" data-i18n="accuracy">GPS Accuracy</span>
+                            <span id="geo-accuracy" class="text-emerald-500 font-mono font-semibold">± 5 Meters</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block" data-i18n="address">Location City</span>
+                            <span id="geo-address" class="text-slate-800 dark:text-slate-200 font-semibold truncate">Bengaluru, Karnataka, IN</span>
+                        </div>
+                    </div>
+
+                    <div id="leaflet-map" class="w-full h-[480px] rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 shadow-xl"></div>
+                </div>
+            </div>
+
+            <!-- TAB 3: ANALYTICS & LOGS -->
+            <div id="tab-analytics" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-5 rounded-2xl space-y-4">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-chart-area text-cyan-500"></i>
+                                <span data-i18n="analytics_title">Multi-Sensor Historical Overlay</span>
+                            </h2>
+                            <p class="text-xs text-slate-400" data-i18n="analytics_desc">Compare gas concentrations over custom temporal windows</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-800" id="analytics-sensor-toggles">
+                        <!-- JS generated toggles -->
+                    </div>
+
+                    <div class="h-80 w-full pt-2">
+                        <canvas id="fullAnalyticsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- TELEMETRY LOG TABLE -->
+                <div class="glass-panel p-5 rounded-2xl space-y-4">
+                    <div class="flex flex-col md:flex-row justify-between md:items-center gap-3">
+                        <h3 class="font-bold text-slate-900 dark:text-white text-base" data-i18n="log_title">Telemetry Log Feed</h3>
+                        <div class="flex items-center space-x-3">
+                            <input type="text" id="log-search-input" onkeyup="filterLogTable()" placeholder="Search logs..." class="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 w-48">
+                            <button onclick="exportCSV()" class="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-300 text-xs font-semibold flex items-center space-x-1.5">
+                                <i class="fa-solid fa-file-export"></i>
+                                <span data-i18n="export_csv">Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                        <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                            <thead class="bg-slate-100 dark:bg-slate-900 text-slate-400 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                                <tr>
+                                    <th class="p-3" data-i18n="th_time">Time</th>
+                                    <th class="p-3">MQ135</th>
+                                    <th class="p-3">MQ7</th>
+                                    <th class="p-3">MQ2</th>
+                                    <th class="p-3">MQ4</th>
+                                    <th class="p-3">MQ6</th>
+                                    <th class="p-3">MQ8</th>
+                                    <th class="p-3" data-i18n="th_temphum">Temp/Hum</th>
+                                    <th class="p-3" data-i18n="th_status">Hazard Score</th>
+                                </tr>
+                            </thead>
+                            <tbody id="telemetry-log-tbody" class="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
+                                <!-- JS populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: MANUAL NOTIFICATION THRESHOLD SETTINGS -->
+            <div id="tab-thresholds" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-5 rounded-2xl space-y-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <i class="fa-solid fa-bell text-cyan-500"></i>
+                            <span data-i18n="custom_alert_title">Custom Notification Threshold Controls</span>
+                        </h2>
+                        <p class="text-xs text-slate-400" data-i18n="custom_alert_desc">Manually configure the exact values that trigger browser popups, toast messages, and audio alarms.</p>
+                    </div>
+
+                    <!-- THRESHOLD FORM CARDS -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="threshold-inputs-container">
+                        <!-- JS Generated Threshold Boxes -->
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center space-x-4 text-xs">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="enable-audio-alarm" checked class="accent-cyan-500 w-4 h-4">
+                                <span class="text-slate-700 dark:text-slate-300 font-semibold" data-i18n="audio_alarm">Audio Beep Alarm</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="enable-browser-notif" checked class="accent-cyan-500 w-4 h-4">
+                                <span class="text-slate-700 dark:text-slate-300 font-semibold" data-i18n="browser_notif">Browser Popups</span>
+                            </label>
+                        </div>
+                        <button onclick="saveCustomThresholds()" class="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs shadow-lg shadow-cyan-600/30 transition flex items-center space-x-2">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                            <span data-i18n="save_thresholds">Save Alert Thresholds</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ALERTS AUDIT LOG TABLE -->
+                <div class="glass-panel p-5 rounded-2xl space-y-4">
+                    <h3 class="font-bold text-slate-900 dark:text-white text-base" data-i18n="alert_history_title">Triggered Alert Breach Log</h3>
+                    <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                        <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                            <thead class="bg-slate-100 dark:bg-slate-900 text-slate-400 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                                <tr>
+                                    <th class="p-3" data-i18n="th_time">Time</th>
+                                    <th class="p-3" data-i18n="th_sensor">Sensor</th>
+                                    <th class="p-3" data-i18n="th_breached_val">Reading Value</th>
+                                    <th class="p-3" data-i18n="th_limit_set">Custom Limit</th>
+                                    <th class="p-3" data-i18n="th_severity">Severity Level</th>
+                                </tr>
+                            </thead>
+                            <tbody id="alert-history-tbody" class="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
+                                <!-- Generated JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: MANUAL SENSOR INPUT TESTING MODAL/PANEL -->
+            <div id="tab-manual-input" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-5 rounded-2xl space-y-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <i class="fa-solid fa-sliders text-cyan-500"></i>
+                            <span data-i18n="manual_test_title">Manual Sensor Input Simulator</span>
+                        </h2>
+                        <p class="text-xs text-slate-400" data-i18n="manual_test_desc">Manually drag sliders or type custom gas values to immediately test gauge response and threshold alert triggers.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="manual-sliders-container">
+                        <!-- JS generated sliders -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: PROFILE SETTINGS -->
+            <div id="tab-profile" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-6 rounded-2xl space-y-6 max-w-4xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-user-gear text-cyan-500"></i>
+                                <span data-i18n="profile_settings_title">User Profile Settings</span>
+                            </h2>
+                            <p class="text-xs text-slate-400" data-i18n="profile_settings_desc">Manage your account credentials, avatar picture, and personal preferences with live local storage persistence.</p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 text-[11px] font-bold flex items-center">
+                            <i class="fa-solid fa-database mr-1.5"></i> Persistent Storage Active
+                        </span>
+                    </div>
+
+                    <form onsubmit="handleProfileUpdate(event)" class="space-y-6">
+                        
+                        <!-- AVATAR / PHOTO UPLOAD SECTION -->
+                        <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6 p-4 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                            <div class="relative group">
+                                <img id="profile-avatar-preview" src="https://api.dicebear.com/7.x/bottts/svg?seed=Operator" alt="User Avatar" class="w-24 h-24 rounded-2xl bg-slate-200 dark:bg-slate-800 object-cover border-2 border-cyan-500/40 shadow-md">
+
+                                <label for="avatar-file-input" class="absolute inset-0 bg-slate-900/60 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-semibold cursor-pointer transition">
+                                    <i class="fa-solid fa-camera mr-1"></i> Change
+                                </label>
+                                <input type="file" id="avatar-file-input" accept="image/*" onchange="handleAvatarUpload(event)" class="hidden">
+                            </div>
+
+                            <div class="space-y-1.5 text-center sm:text-left">
+                                <h3 id="profile-display-name" class="text-base font-bold text-slate-800 dark:text-slate-100">Dr. Rajesh Kumar</h3>
+                                <p id="profile-display-username" class="text-xs text-cyan-600 dark:text-cyan-400 font-mono">@rajesh_sentinel</p>
+                                <div class="flex items-center space-x-2 pt-1 justify-center sm:justify-start">
+                                    <label for="avatar-file-input" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30 text-xs font-semibold cursor-pointer transition">
+                                        <i class="fa-solid fa-upload mr-1"></i> Upload Photo
+                                    </label>
+                                    <button type="button" onclick="resetAvatarToDefault()" class="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold transition">
+                                        Reset Avatar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ACCOUNT INFORMATION INPUTS -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                            <div>
+                                <label class="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5" data-i18n="full_name">Full Name</label>
+                                <input type="text" id="profile-name" required placeholder="Full Name" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-medium">
+                            </div>
+
+                            <div>
+                                <label class="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5" data-i18n="username">Username</label>
+                                <input type="text" id="profile-username" required placeholder="username" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-medium font-mono">
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <label class="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5" data-i18n="email">Email Address</label>
+                                <input type="email" id="profile-email" required placeholder="operator@breatheiq.io" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-medium">
+                            </div>
+                        </div>
+
+                        <!-- PASSWORD CHANGE SECTION -->
+                        <div class="border-t border-slate-200 dark:border-slate-800 pt-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200" data-i18n="security_settings">Password & Security</h3>
+                                <button type="button" onclick="triggerPasswordResetEmail()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:underline font-semibold flex items-center space-x-1">
+                                    <i class="fa-solid fa-key"></i>
+                                    <span data-i18n="reset_pass_link">Send Reset Password Link</span>
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                                <div>
+                                    <label class="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5" data-i18n="new_password">New Password</label>
+                                    <input type="password" id="profile-password" placeholder="••••••••" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-medium">
+                                </div>
+
+                                <div>
+                                    <label class="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5" data-i18n="confirm_password">Confirm New Password</label>
+                                    <input type="password" id="profile-confirm-password" placeholder="••••••••" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-medium">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BUTTON CONTROLS -->
+                        <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                            <button type="button" onclick="resetProfileForm()" class="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold text-xs hover:bg-slate-200 dark:hover:bg-slate-800 transition">
+                                Discard Changes
+                            </button>
+                            <button type="submit" class="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs shadow-lg shadow-cyan-600/30 transition flex items-center space-x-2">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                                <span data-i18n="save_profile">Save & Update Account</span>
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB 7: SYSTEM SETTINGS -->
+            <div id="tab-settings" class="tab-content hidden space-y-6">
+                <div class="glass-panel p-5 rounded-2xl space-y-6 max-w-3xl">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <i class="fa-solid fa-gear text-cyan-500"></i>
+                            <span data-i18n="pref_title">System & Operational Preferences</span>
+                        </h2>
+                        <p class="text-xs text-slate-400" data-i18n="pref_desc">Configure operational polling speeds, temperature units, and local memory state.</p>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        <div class="flex items-center justify-between p-3.5 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200 block" data-i18n="polling_rate">Polling Refresh Interval</span>
+                                <span class="text-slate-400" data-i18n="polling_desc">Hardware read loop frequency</span>
+                            </div>
+                            <select id="setting-refresh-rate" onchange="changeRefreshRate(this.value)" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none">
+                                <option value="1000">1 Second (Ultra Fast)</option>
+                                <option value="2000">2 Seconds</option>
+                                <option value="5000" selected>5 Seconds (Default)</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3.5 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200 block" data-i18n="temp_unit">Temperature Unit</span>
+                                <span class="text-slate-400" data-i18n="temp_desc">Switch scale for SHT31 sensor</span>
+                            </div>
+                            <div class="flex items-center space-x-2 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
+                                <button onclick="setTempUnit('C')" id="btn-unit-c" class="px-3 py-1 rounded bg-cyan-600 text-white font-semibold text-xs">°C</button>
+                                <button onclick="setTempUnit('F')" id="btn-unit-f" class="px-3 py-1 rounded text-slate-500 font-semibold text-xs">°F</button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3.5 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200 block" data-i18n="clear_cache">Clear Telemetry Data Logs</span>
+                                <span class="text-slate-400" data-i18n="clear_desc">Flush local historical buffer</span>
+                            </div>
+                            <button onclick="clearHistory()" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30 font-semibold" data-i18n="clear_btn">Wipe Buffer</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- AUTHENTICATION MODAL -->
+    <div id="auth-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-6 sm:p-8 rounded-3xl border border-slate-300 dark:border-slate-700 shadow-2xl space-y-6">
+
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30 mx-auto">
+                    <i class="fa-solid fa-lungs text-white text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-extrabold text-slate-900 dark:text-white">Breathe IQ</h2>
+                <p class="text-xs text-slate-400" data-i18n="auth_subtitle">Smart Air & Industrial Gas Sentinel System</p>
+            </div>
+
+            <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                <button id="auth-tab-login" onclick="switchAuthMode('login')" class="flex-1 py-2 rounded-lg font-semibold text-cyan-600 dark:text-cyan-400 bg-white dark:bg-slate-800 transition shadow-sm" data-i18n="sign_in">Sign In</button>
+                <button id="auth-tab-register" onclick="switchAuthMode('register')" class="flex-1 py-2 rounded-lg font-semibold text-slate-400 hover:text-slate-900 dark:hover:text-white transition" data-i18n="register">Register</button>
+            </div>
+
+            <button onclick="simulateGoogleAuth()" class="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs flex items-center justify-center space-x-2 transition">
+                <i class="fa-brands fa-google text-red-500 text-sm"></i>
+                <span data-i18n="google_login">Continue with Google Account</span>
+            </button>
+
+            <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="name-field-group" class="hidden space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="full_name">Full Name</label>
+                        <input type="text" id="auth-name" placeholder="Dr. Rajesh Kumar" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="username">Username</label>
+                        <input type="text" id="auth-username" placeholder="rajesh_sentinel" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="email">Email Address</label>
+                    <input type="email" id="auth-email" required placeholder="operator@breatheiq.io" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                </div>
+
+                <div>
+                    <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="password">Password</label>
+                    <input type="password" id="auth-password" required placeholder="••••••••" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                </div>
+
+                <div id="confirm-password-group" class="hidden">
+                    <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="confirm_password">Confirm Password</label>
+                    <input type="password" id="auth-confirm-password" placeholder="••••••••" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500">
+                </div>
+
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs shadow-lg shadow-cyan-600/30 transition" data-i18n="sign_in_btn">
+                    Sign In to Dashboard
+                </button>
+            </form>
+
+            <div class="text-center space-y-1">
+                <button onclick="loginAsGuest()" class="text-xs text-cyan-600 dark:text-cyan-400 font-semibold underline underline-offset-4" data-i18n="guest_mode">
+                    Explore with Demo Guest Account
+                </button>
+                <div class="text-[10px] text-slate-500">Demo User: <span class="font-mono text-cyan-500">demo@breatheiq.com</span> / <span class="font-mono text-cyan-500">password123</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN JAVASCRIPT APP LOGIC -->
+    <script src="script.js"></script>
+</body>
+</html>
